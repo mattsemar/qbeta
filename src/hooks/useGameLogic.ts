@@ -12,7 +12,7 @@ import {
   markBonusLevelAsCompleted,
   markCommunityLevelAsCompleted,
   markLevelAsCompleted,
-  markRandomLevelAsCompleted,
+  recordRandomLevelState,
   setAutoPlaceXsPreference,
   setClashingQueensPreference,
   setShowClockPreference,
@@ -143,6 +143,9 @@ const useGameLogic = ({
       removeQueen(newBoard, row, col);
       addToHistory({ row, col, symbol: null });
     }
+    if (isRandomLevel && id) {
+      recordRandomLevelState(id, timer, newBoard, false);
+    }
 
     // Check for win condition after updating the board
     if (checkWinCondition(newBoard, boardSize, colorRegions)) {
@@ -157,7 +160,7 @@ const useGameLogic = ({
         } else if (isCommunityLevel) {
           markCommunityLevelAsCompleted(id);
         } else if (isRandomLevel) {
-          markRandomLevelAsCompleted(id, timer);
+          recordRandomLevelState(id, timer, board, true);
         } else {
           markLevelAsCompleted(Number(id));
         }
@@ -193,6 +196,29 @@ const useGameLogic = ({
       }
     }
     setBoard(newBoard);
+  };
+
+  const handleDragToClear = (isClear: boolean, squares: number[][]) => {
+    if (squares.length === 0) {
+      return;
+    }
+    if (!isClear) {
+      handleDrag(squares);
+      recordState();
+      return;
+    }
+
+    console.log("handleDragToClear", squares);
+
+    const newBoard = structuredClone(board);
+    for (const [row, col] of squares) {
+      if (newBoard[row][col] !== "Q") {
+        newBoard[row][col] = null;
+        addToHistory({ row, col, symbol: null });
+      }
+    }
+    setBoard(newBoard);
+    recordState();
   };
 
   const placeQueen = (
@@ -355,6 +381,13 @@ const useGameLogic = ({
     setTimer(time);
   };
 
+  const recordState = () => {
+    if (!isRandomLevel || !id) {
+      return;
+    }
+    recordRandomLevelState(id, timer, board, hasWon);
+  };
+
   const handleUndo = () => {
     const newBoard = structuredClone(board);
     const latest = history.current.pop();
@@ -404,6 +437,7 @@ const useGameLogic = ({
     history,
     handleSquareClick,
     handleDrag,
+    handleDragToClear,
     handleUndo,
     toggleClashingQueens,
     toggleShowInstructions,

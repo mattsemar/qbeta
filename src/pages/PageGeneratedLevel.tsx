@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -8,9 +8,10 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  DiscAlbum,
 } from "lucide-react";
 import Board from "../components/CommunityLevel/components/Board";
-import { createEmptyBoard } from "../utils/board";
+import { createEmptyBoard, isCompletedBoard } from "../utils/board";
 import BackIcon from "../components/icons/BackIcon";
 
 import HowToPlay from "../components/GameLevel/components/HowToPlay";
@@ -31,7 +32,11 @@ import WinningScreen from "@/components/LevelBuilder/components/TestLevel/compon
 import { Button } from "@/components/ui/button.tsx";
 import CopyLink from "@/components/GeneratedLevel/components/CopyLink.tsx";
 import Queen from "@/components/Queen.tsx";
-import { getRandomLevelCompletionTimeWithLabel } from "@/utils/localStorage.ts";
+import {
+  getRandomBoardState,
+  getRandomLevelCompletionTimeWithLabel,
+  markRandomBoardCompleted,
+} from "@/utils/localStorage.ts";
 
 interface RandomLevel {
   size: number;
@@ -48,7 +53,14 @@ const PageGeneratedLevel = () => {
   const [zoomLevel, setZoomLevel] = useState(1);
   const [loading, setLoading] = useState(true);
   const [levelSize, setLevelSize] = useState(8);
+  const [timeOverride, setTimeOverride] = useState<number | undefined>(
+    undefined,
+  );
   const [showRegionLetters, setShowRegionLetters] = useState<boolean>(false);
+  const hasSavedState = useMemo(() => {
+    const state = getRandomBoardState(id ?? "UNKNOWN");
+    return !!(state?.state && state.savedDataFound);
+  }, [id]);
 
   const {
     board,
@@ -65,7 +77,7 @@ const PageGeneratedLevel = () => {
     setShowWinningScreen,
     setTimerRunning,
     handleSquareClick,
-    handleDrag,
+    handleDragToClear,
     handleUndo,
     handleTimeUpdate,
     toggleClashingQueens,
@@ -81,6 +93,11 @@ const PageGeneratedLevel = () => {
     levelType: "random",
   });
 
+  const completionTime = useMemo(
+    () => (id ? getRandomLevelCompletionTimeWithLabel(id) : undefined),
+    [id, completed],
+  );
+
   useEffect(() => {
     try {
       if (id) {
@@ -95,7 +112,15 @@ const PageGeneratedLevel = () => {
         setShowWinningScreen(false);
         setLevelSize(level.size);
         setLevel(level);
+        setLevelSize(levelRegions.length);
         setLoading(false);
+        // Adjust zoom based on level size
+        // zoom = 1 for level sizes up to 11, but subtract 0.1 for each increment above that down to a minimum of 0.5
+        const autoZoom = Math.max(
+          Math.min(1, 1 - (levelRegions.length - 12) * 0.1),
+          0.5,
+        );
+        setZoomLevel(autoZoom);
       }
     } catch (e) {
       console.error("Error decoding level from path:", e);
@@ -103,8 +128,15 @@ const PageGeneratedLevel = () => {
   }, []);
 
   useEffect(() => {
-    setShowRegionLetters(false);
-  }, []);
+    if (hasSavedState) {
+      const state = getRandomBoardState(id ?? "UNKNOWN");
+      if (state.savedDataFound && !isCompletedBoard(state?.state)) {
+        history.current = [];
+        setBoard(state?.state || createEmptyBoard(levelSize));
+        setTimeOverride(state?.timeInSeconds);
+      }
+    }
+  }, [hasSavedState]);
 
   useEffect(() => {
     if (!isVisible || hasWon) {
@@ -173,12 +205,27 @@ const PageGeneratedLevel = () => {
               <div className="flex flex-none justify-end">
                 <div className="flex items-center space-x-2">
                   <Queen
-                    title={getRandomLevelCompletionTimeWithLabel(id as string)}
+                    title={
+                      completed ? (completionTime ?? undefined) : undefined
+                    }
                     size="18"
                     className={`fill-yellow-400 mr-2 ${
                       completed ? "visible" : "invisible"
                     }`}
                   />
+                  <button
+                    onClick={() => {
+                      markRandomBoardCompleted(id || "UNKNOWN");
+                    }}
+                    hidden={!completed}
+                    className="border border-slate-500 rounded-full p-2"
+                    title="Mark Completed"
+                  >
+                    <DiscAlbum
+                      size="18"
+                      className={loading ? "animate-spin" : ""}
+                    />
+                  </button>
 
                   <Link
                     to={"/random-level?size=" + level.size}
@@ -196,6 +243,7 @@ const PageGeneratedLevel = () => {
                       setHasWon(false);
                       setShowWinningScreen(false);
                       history.current = [];
+                      setTimeOverride(1);
                     }}
                     disabled={loading}
                     className="border border-slate-500 rounded-full p-2"
@@ -206,6 +254,7 @@ const PageGeneratedLevel = () => {
                       className={loading ? "animate-spin" : ""}
                     />
                   </button>
+
                   <div>
                     <SettingsDialog
                       showClashingQueens={showClashingQueens}
@@ -227,6 +276,14 @@ const PageGeneratedLevel = () => {
                 run={timerRunning}
                 onTimeUpdate={handleTimeUpdate}
                 showTimer={showClock}
+                setTime={() => {
+                  if (timeOverride) {
+                    const tmpTime = timeOverride;
+                    setTimeOverride(undefined);
+                    return { newTime: tmpTime };
+                  }
+                  return { newTime: undefined };
+                }}
               />
             </div>
 
@@ -237,7 +294,8 @@ const PageGeneratedLevel = () => {
               <Board
                 board={board}
                 handleSquareClick={handleSquareClick}
-                handleSquareMouseEnter={handleDrag}
+                handleSquareMouseEnter={() => undefined}
+                handleDrags={handleDragToClear}
                 zoomLevel={zoomLevel}
                 showLetters={showRegionLetters}
                 boardSize={level.size}

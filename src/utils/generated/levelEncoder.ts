@@ -90,6 +90,28 @@ function decodeLevelRegionsRLE(encodedRegionString: string) {
   return decodeLevelRegions(currentStr);
 }
 
+const REGION_LETTERS = Array.from({ length: 26 }).map((_, i) =>
+  String.fromCharCode("A".charCodeAt(0) + i),
+);
+
+function normalizeRegionNames(regions: string[][]): string[][] {
+  const oldToNewMap = new Map<string, string>();
+  let nextLetterIndex = 0;
+  const result = Array.from({ length: regions.length }, () =>
+    Array.from({ length: regions[0].length }, () => "A"),
+  );
+  for (let i = 0; i < regions.length; i++) {
+    for (let j = 0; j < regions[i].length; j++) {
+      if (!oldToNewMap.has(regions[i][j])) {
+        oldToNewMap.set(regions[i][j], REGION_LETTERS[nextLetterIndex]);
+        nextLetterIndex++;
+      }
+      result[i][j] = oldToNewMap.get(regions[i][j])!;
+    }
+  }
+  return result;
+}
+
 export function decodeLevelRegions(encoded: string): string[][] {
   if (encoded.startsWith("0")) {
     return decodeLevelRegionsRLE(encoded.slice(1));
@@ -100,7 +122,7 @@ export function decodeLevelRegions(encoded: string): string[][] {
   for (let i = 0; i < size; i++) {
     regions.push(encoded.slice(i * size, (i + 1) * size).split(""));
   }
-  return regions;
+  return normalizeRegionNames(regions);
 }
 
 function hashCode(levelString: string) {
@@ -120,4 +142,19 @@ export function getHashForLevelId(levelId: string): string {
   const levelRegions = encodeLevelRegionsBasic(decodeLevelRegions(levelId));
   const hash = hashCode(levelRegions);
   return hash.toString();
+}
+
+export function getSizeForLevelId(levelId: string): number {
+  const levelRegions = encodeLevelRegionsBasic(decodeLevelRegions(levelId));
+  return Math.floor(Math.sqrt(levelRegions.length));
+}
+
+export function getFormattedSizeForLevel(levelId: string): string {
+  const levelRegions = encodeLevelRegionsBasic(decodeLevelRegions(levelId));
+  const dimension = Math.floor(Math.sqrt(levelRegions.length)).toString();
+  return `${dimension.padStart(2, " ")}x${dimension.padEnd(2, " ")}`;
+}
+
+export function getLevelNameFromId(id: string): string {
+  return `rnd_${getHashForLevelId(id)}`;
 }
